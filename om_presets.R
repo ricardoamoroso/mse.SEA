@@ -162,5 +162,6 @@ om_list <- list(
   om_deterministic     = om_deterministic,
   om_baseline          = om_baseline,
   om_param_uncertainty = om_param_uncertainty,
-  om_autocorr          = om_autocorr
+  om_autocorr          = om_autocorr,
+  om_custom_ui         = list(label = "Custom OM (set parameters below)")
 )

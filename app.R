@@ -78,7 +78,14 @@ om_choices_list <- setNames(names(om_list),
 # Fixed MP objects from mp_presets.R
 
 
-fixed_mp_list <- mp_all
+fixed_mp_list <- c(mp_all, list(
+  mp_custom(
+    mp_id    = "MP_custom",
+    name     = "Custom MP (set parameters below)",
+    hcr_type = "constant_effort",
+    E        = 1
+  )
+))
 
 fixed_mp_choices <- setNames(
   sapply(fixed_mp_list, `[[`, "mp_id"),
@@ -260,6 +267,17 @@ ui <- fluidPage(
       ),
       hr(),
 
+      # --- Custom OM sliders ---
+      conditionalPanel(
+        condition = "input.om_id == 'om_custom_ui'",
+        sliderInput("cv_r",     "CV on r (growth rate)",      0, 0.5, 0,    step = 0.05),
+        sliderInput("cv_K",     "CV on K (carrying capacity)", 0, 0.5, 0,   step = 0.05),
+        sliderInput("proc_cv",  "Process error CV",            0, 0.5, 0.2, step = 0.05),
+        sliderInput("obs_cv",   "Observation error CV",        0, 0.5, 0.2, step = 0.05),
+        sliderInput("proc_rho", "Autocorrelation (process)",   0, 0.9, 0,   step = 0.1)
+      ),
+      hr(),
+
       # --- MP selector ---
       div(class = "sidebar-section",
           selectInput("mp_id", "Management Procedure (MP)",
@@ -280,6 +298,44 @@ ui <- fluidPage(
           # Spatial closure: prop_closed is read from PropB_area column in CSV
       ),
       hr(),
+
+      conditionalPanel(
+        condition = "input.mp_id == 'MP_custom'",
+        br(),
+        selectInput("custom_mp_type", "MP type",
+                    choices = c("Constant effort" = "constant_effort",
+                                "Hockey-stick (min)" = "B_hs_min",
+                                "2-over-3"        = "two_over_three","Slope rule"       = "slope_rule")),
+        conditionalPanel(
+          condition = "input.custom_mp_type == 'constant_effort'",
+          sliderInput("custom_E_fraction", "Effort fraction of Emsy",
+                      0, 1.5, 1, step = 0.1)
+        ),
+        conditionalPanel(
+          condition = "input.custom_mp_type == 'B_hs_min'",
+          sliderInput("custom_d_lim",  "Limit depletion (d_lim)",
+                      0, 0.5, 0.2, step = 0.05),
+          sliderInput("custom_d_trig", "Trigger depletion (d_trig)",
+                      0, 1.0, 0.4, step = 0.05),
+          sliderInput("custom_Emax_frac", "Max effort (fraction of Emsy)",
+                      0, 1.5, 1, step = 0.1)
+        ),
+        conditionalPanel(
+          condition = "input.custom_mp_type == 'two_over_three'",
+          sliderInput("custom_max_change", "Max annual change",
+                      0, 0.5, 0.2, step = 0.05)
+        ),
+        conditionalPanel(
+          condition = "input.custom_mp_type == 'slope_rule'",
+          sliderInput("custom_max_change_slope", "Max annual change",
+                      0, 0.5, 0.2, step = 0.05),
+          sliderInput("custom_n_years", "Years for slope calculation",
+                      2, 10, 5, step = 1),
+          sliderInput("custom_lambda", "Sensitivity (lambda)",
+                      0.1, 3, 1, step = 0.1)
+        )
+        ),
+        hr(),
 
       # --- Simulation settings ---
       div(class = "sidebar-section",
@@ -539,6 +595,37 @@ server <- function(input, output, session) {
       mmsy <- mmsy_r(); req(mmsy)
       df   <- param_data()
 
+
+      # Handle custom MP built from UI sliders
+      if (id == "MP_custom") {
+        mp <- switch(input$custom_mp_type,
+                     constant_effort = mp_custom(
+                       mp_id    = "MP_custom",
+                       name     = "Custom constant effort",
+                       hcr_type = "constant_effort",
+                       E        = mmsy$E_mmsy * (input$custom_E_fraction %||% 1)
+                     ),
+                     B_hs_min = mp_custom(
+                       mp_id    = "MP_custom",
+                       name     = "Custom hockey-stick",
+                       hcr_type = "B_hs_min",
+                       d_lim    = input$custom_d_lim  %||% 0.2,
+                       d_trig   = input$custom_d_trig %||% 0.4,
+                       Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                       Emin     = 0
+                     ),
+                     two_over_three = mp_custom(
+                       mp_id      = "MP_custom",
+                       name       = "Custom 2-over-3",
+                       hcr_type   = "two_over_three",
+                       agg_type   = "min",
+                       max_change = input$custom_max_change %||% 0.2
+                     )
+        )
+        return(mp)
+      }
+
+
       runtime <- list(
         E_mmsy          = mmsy$E_mmsy,
         E_init          = E_init_r(),
@@ -551,50 +638,26 @@ server <- function(input, output, session) {
       if (length(mp_found) == 0) stop("Unknown MP id: ", id)
       resolve_mp_params(mp_found[[1]], runtime)
     })
-    # selected_mp_r <- reactive({
-    #   req(input$mp_id)
-    #   id    <- input$mp_id
-    #   mmsy  <- mmsy_r(); req(mmsy)
-    #   E_msy <- mmsy$E_mmsy
-    #
-    #
-    #   # Fixed MPs — fetch then inject E_mmsy-dependent params
-    #   mp_found <- Filter(function(m) m$mp_id == id, fixed_mp_list)
-    #   if (length(mp_found) == 0) stop("Unknown MP id: ", id)
-    #   mp <- mp_found[[1]]
-    #
-    #   # Seasonal closure: inject E_base and read months slider
-    #   if (mp$hcr_type == "seasonal_closure") {
-    #     mp$params$E_base      <-  E_init_r()
-    #     months_closed         <- input$closure_months %||% 3
-    #     mp$params$prop_season <- months_closed / 12
-    #   }
-    #
-    #   # Spatial closure: inject E_base and species-specific prop_closed from CSV
-    #   if (mp$hcr_type == "spatial_closure") {
-    #     mp$params$E_base <- E_init_r()
-    #     df <- param_data(); req(df)
-    #     if (!any(is.na(df$prop_B_area))) {
-    #       # Use species-specific vector from PropB_area column
-    #       mp$params$prop_closed <- df$prop_B_area
-    #     }
-    #     # If PropB_area not in CSV, keep whatever is in mp_presets (scalar default)
-    #   }
-    #
-    #   # Hockey-stick MPs: Emax = full-stock effort = Emsy
-    #   if (mp$hcr_type %in% c("B_hs_min", "B_hs_mean", "index_hs_min", "B_hs_low_r")) {
-    #     mp$params$Emax <- E_msy
-    #   }
-    #
-    #   mp
-    # })
+
 
     # ---- 6. Get selected OM spec ----
     # simply looks up the chosen OM id in om_spec_map and returns the om_spec object.
     selected_om_r <- reactive({
       req(input$om_id)
-      om_spec_map[[input$om_id]]
+      if (input$om_id == "om_custom_ui") {
+        om_custom(
+          r_cv     = input$cv_r,
+          K_cv     = input$cv_K,
+          proc_cv  = input$proc_cv,
+          obs_cv   = input$obs_cv,
+          proc_rho = input$proc_rho,
+          label    = "Custom OM"
+        )
+      } else {
+        om_spec_map[[input$om_id]]
+      }
     })
+
 
     # ---- Closure labels ----
     output$closure_prop_label <- renderUI({
