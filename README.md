@@ -1,7 +1,7 @@
 ## Multispecies MSE
 
 ### Run online
-https://ricardoamoroso.shinyapps.io/mse_app_v2
+https://ricardoamoroso.shinyapps.io/mseSEA/
 
 ### Run locally
 Install R, then run:
