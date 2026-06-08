@@ -1,31 +1,19 @@
 # =================================================================
 # mp_presets.R — Management Procedure definitions
 #
-# Structure:
-#   1. mp_custom()  — base constructor
-#   2. Reactive MPs — depend on E_mmsy computed from user data
-#                     these are defined in the Shiny module, not here
-#   3. Fixed MPs    — do not depend on user data, defined here
-#
-# Note: constant effort MPs (Emsy, 0.8*Emsy, 0.6*Emsy) cannot be
-# defined here because E_mmsy depends on the uploaded species
-# parameters. They are created at runtime in the Shiny server
-# using mmsy_shared_effort().
+# TOKENS (resolved by resolve_mp_params in app.R):
+#   ".E_mmsy"              — multispecies MSY effort
+#   ".E_mmsy_08"           — E_mmsy * 0.8
+#   ".E_mmsy_06"           — E_mmsy * 0.6
+#   ".E_init"              — historical effort from user
+#   ".closure_months_prop" — input$closure_months / 12
+#   ".prop_closed_csv"     — PropB_area column from CSV
 # =================================================================
-
 
 # -----------------------------------------------------------------
 # 1. BASE CONSTRUCTOR
 # -----------------------------------------------------------------
 
-#' Create a custom MP specification
-#'
-#' @param mp_id    Short identifier string
-#' @param name     Display name for plots and tables
-#' @param hcr_type HCR type — must match a type in hcr_registry
-#' @param ...      HCR parameters (d_lim, d_trig, Emax, Emin, E)
-#' @return An object of class mp_spec
-#' @export
 mp_custom <- function(mp_id, name, hcr_type, ...) {
   structure(
     list(mp_id    = mp_id,
@@ -36,8 +24,6 @@ mp_custom <- function(mp_id, name, hcr_type, ...) {
   )
 }
 
-#' Print method for mp_spec
-#' @export
 print.mp_spec <- function(x, ...) {
   cat("MP:", x$name, "\n")
   cat("  id:       ", x$mp_id,    "\n")
@@ -50,13 +36,11 @@ print.mp_spec <- function(x, ...) {
   invisible(x)
 }
 
-
 # -----------------------------------------------------------------
 # 2. FIXED MPs
-# These do not depend on user data so can be defined here.
-# Biomass and index based HCRs with standard reference points.
 # -----------------------------------------------------------------
 
+# No fishing
 mp_no_fishing <- mp_custom(
   mp_id    = "MP_no_fishing",
   name     = "No fishing (E = 0)",
@@ -64,9 +48,38 @@ mp_no_fishing <- mp_custom(
   E        = 0
 )
 
+# Constant effort at Emsy fractions
+mp_const_emsy <- mp_custom(
+  mp_id    = "MP_constEmsy",
+  name     = "Constant E = Emsy",
+  hcr_type = "constant_effort",
+  E        = ".E_mmsy"
+)
 
-# ── Biomass hockey-stick MPs ─────────────────────────────────────
+mp_const_08emsy <- mp_custom(
+  mp_id    = "MP_const08Emsy",
+  name     = "Constant E = 0.8 Emsy",
+  hcr_type = "constant_effort",
+  E        = ".E_mmsy_08"
+)
 
+mp_const_06emsy <- mp_custom(
+  mp_id    = "MP_const06Emsy",
+  name     = "Constant E = 0.6 Emsy",
+  hcr_type = "constant_effort",
+  E        = ".E_mmsy_06"
+)
+
+# Biomass hockey-stick MPs
+mp_B_hs_min <- mp_custom(
+  mp_id    = "MP_B_hs_min",
+  name     = "Biomass HS (most depleted species)",
+  hcr_type = "B_hs_min",
+  d_lim    = 0.2,
+  d_trig   = 0.4,
+  Emax     = ".E_init",
+  Emin     = 0.0
+)
 
 mp_B_hs_mean <- mp_custom(
   mp_id    = "MP_B_hs_mean",
@@ -78,6 +91,18 @@ mp_B_hs_mean <- mp_custom(
   Emin     = 0.0
 )
 
+mp_B_hs_low_r <- mp_custom(
+  mp_id    = "MP_B_hs_low_r",
+  name     = "Biomass HS (n least resilient species)",
+  hcr_type = "B_hs_low_r",
+  d_lim    = 0.2,
+  d_trig   = 0.4,
+  Emax     = ".E_init",
+  Emin     = 0.0,
+  n_low    = 2
+)
+
+# Index hockey-stick MPs
 mp_index_hs_min <- mp_custom(
   mp_id    = "MP_index_hs_min",
   name     = "Index HS (most depleted species)",
@@ -88,8 +113,17 @@ mp_index_hs_min <- mp_custom(
   Emin     = 0.0
 )
 
-#
-# ── Seasonal closure ─────────────────────────────────────────────
+mp_index_hs_mean <- mp_custom(
+  mp_id    = "MP_index_hs_mean",
+  name     = "Index HS (mean species)",
+  hcr_type = "index_hs_mean",
+  d_lim    = 0.2,
+  d_trig   = 0.4,
+  Emax     = ".E_init",
+  Emin     = 0.0
+)
+
+# Seasonal closure
 mp_seasonal_closure <- mp_custom(
   mp_id       = "MP_seasonal_closure",
   name        = "Seasonal closure (X months)",
@@ -97,8 +131,8 @@ mp_seasonal_closure <- mp_custom(
   prop_season = ".closure_months_prop",
   E_base      = ".E_init"
 )
-#
-# ── Spatial closure ──────────────────────────────────────────────
+
+# Spatial closure
 mp_spatial_closure <- mp_custom(
   mp_id       = "MP_spatial_closure",
   name        = "Spatial closure",
@@ -107,8 +141,7 @@ mp_spatial_closure <- mp_custom(
   E_base      = ".E_init"
 )
 
-#
-# ── 2-over-3 rule ────────────────────────────────────────────────
+# 2-over-3 rule
 mp_2over3_min <- mp_custom(
   mp_id      = "MP_2over3_min",
   name       = "2-over-3 rule (min species)",
@@ -125,8 +158,7 @@ mp_2over3_mean <- mp_custom(
   max_change = 0.20
 )
 
-#
-# # Slope rule responding to most depleted species
+# Slope rule
 mp_slope_min <- mp_custom(
   mp_id      = "MP_slope_min",
   name       = "Slope rule (min species)",
@@ -147,27 +179,12 @@ mp_slope_mean <- mp_custom(
   max_change = 0.20
 )
 
+
 # -----------------------------------------------------------------
-# 3. RUNTIME MPs — created in Shiny server, documented here
-# These require E_mmsy computed from mmsy_shared_effort()
-#
-mp_const_emsy <- mp_custom(
-   mp_id    = "MP_constEmsy",
-   name     = "Constant E = Emsy",
-   hcr_type = "constant_effort",
-   E        = ".E_mmsy"
- )
-
-
-# mp_const_08emsy <- mp_custom("MP_const08Emsy", "Constant E = 0.8 Emsy",
-#                               "constant_effort", E = mmsy$E_mmsy * 0.8)
-#
-# mp_const_06emsy <- mp_custom("MP_const06Emsy", "Constant E = 0.6 Emsy",
-#                               "constant_effort", E = mmsy$E_mmsy * 0.6)
+# 3. AUTO-DISCOVER ALL MPs
+# Any mp_custom() object defined above is picked up automatically.
+# No manual list maintenance needed.
 # -----------------------------------------------------------------
-
-
-# Bottom of mp_presets.R
 mp_all <- Filter(
   function(x) inherits(x, "mp_spec"),
   mget(ls(), envir = environment())

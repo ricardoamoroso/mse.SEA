@@ -160,6 +160,18 @@ hcr_fn_index_hs_min <- function(params, state) {
   make_control(E, state$S)
 }
 
+hcr_fn_index_hs_mean <- function(params, state) {
+  signal <- mean(clamp(state$I_t / state$I0, 0, 1))
+  E <- hcr_hockeystick(signal,
+                       d_lim  = params$d_lim  %||% 0.2,
+                       d_trig = params$d_trig %||% 0.4,
+                       Emax   = params$Emax   %||% 1,
+                       Emin   = params$Emin   %||% 0)
+  E <- impl_error(E, bias = params$impl_bias %||% 0,
+                  cv   = params$impl_cv   %||% 0)
+  make_control(E, state$S)
+}
+
 # Spatial closure: protects a fraction of biomass per species
 # prop_closed is a vector of length S (or scalar, recycled)
 # Implementation error = poaching (fleet accesses more of closed area)
@@ -296,6 +308,7 @@ hcr_registry <- list(
   B_hs_mean        = hcr_fn_B_hs_mean,
   B_hs_low_r       = hcr_fn_B_hs_low_r,
   index_hs_min     = hcr_fn_index_hs_min,
+  index_hs_mean = hcr_fn_index_hs_mean,
   spatial_closure  = hcr_fn_spatial_closure,
   seasonal_closure = hcr_fn_seasonal_closure,
   two_over_three   = hcr_fn_2over3,
