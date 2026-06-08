@@ -305,39 +305,66 @@ ui <- fluidPage(
         condition = "input.mp_id == 'MP_custom'",
         br(),
         selectInput("custom_mp_type", "MP type",
-                    choices = c("Constant effort" = "constant_effort",
-                                "Hockey-stick (min)" = "B_hs_min",
-                                "2-over-3"        = "two_over_three","Slope rule"       = "slope_rule")),
+                    choices = c(
+                      "Constant effort"                  = "constant_effort",
+                      "Hockey-stick (min species)"       = "B_hs_min",
+                      "Hockey-stick (mean species)"      = "B_hs_mean",
+                      "Hockey-stick (n least resilient)" = "B_hs_low_r",
+                      "Index HS (min species)"           = "index_hs_min",
+                      "Index HS (mean species)"          = "index_hs_mean",
+                      "2-over-3"                         = "two_over_three",
+                      "Slope rule"                       = "slope_rule"
+                    )),
+
+        # Constant effort
         conditionalPanel(
           condition = "input.custom_mp_type == 'constant_effort'",
           sliderInput("custom_E_fraction", "Effort fraction of Emsy",
                       0, 1.5, 1, step = 0.1)
         ),
+
+        # All hockey-stick types share d_lim, d_trig, Emax
         conditionalPanel(
-          condition = "input.custom_mp_type == 'B_hs_min'",
-          sliderInput("custom_d_lim",  "Limit depletion (d_lim)",
-                      0, 0.5, 0.2, step = 0.05),
-          sliderInput("custom_d_trig", "Trigger depletion (d_trig)",
-                      0, 1.0, 0.4, step = 0.05),
-          sliderInput("custom_Emax_frac", "Max effort (fraction of Emsy)",
-                      0, 1.5, 1, step = 0.1)
+          condition = "input.custom_mp_type == 'B_hs_min' ||
+                       input.custom_mp_type == 'B_hs_mean' ||
+                       input.custom_mp_type == 'B_hs_low_r' ||
+                       input.custom_mp_type == 'index_hs_min' ||
+                       input.custom_mp_type == 'index_hs_mean'",
+          sliderInput("custom_d_lim",     "Limit depletion (d_lim)",       0,   0.5, 0.2, step = 0.05),
+          sliderInput("custom_d_trig",    "Trigger depletion (d_trig)",    0,   1.0, 0.4, step = 0.05),
+          sliderInput("custom_Emax_frac", "Max effort (fraction of Emsy)", 0,   1.5, 1.0, step = 0.1)
         ),
+
+        # n_low only for B_hs_low_r
+        conditionalPanel(
+          condition = "input.custom_mp_type == 'B_hs_low_r'",
+          sliderInput("custom_n_low", "Number of most vulnerable species",
+                      1, 5, 2, step = 1)
+        ),
+
+        # 2-over-3
         conditionalPanel(
           condition = "input.custom_mp_type == 'two_over_three'",
+          selectInput("custom_agg_type_2o3", "Apply rule to",
+                      choices = c("Most depleted species" = "min",
+                                  "Mean across species"   = "mean")),
           sliderInput("custom_max_change", "Max annual change",
                       0, 0.5, 0.2, step = 0.05)
         ),
+
+        # Slope rule
         conditionalPanel(
           condition = "input.custom_mp_type == 'slope_rule'",
+          selectInput("custom_agg_type_slope", "Apply rule to",
+                      choices = c("Most depleted species" = "min",
+                                  "Mean across species"   = "mean")),
           sliderInput("custom_max_change_slope", "Max annual change",
                       0, 0.5, 0.2, step = 0.05),
-          sliderInput("custom_n_years", "Years for slope calculation",
-                      2, 10, 5, step = 1),
-          sliderInput("custom_lambda", "Sensitivity (lambda)",
-                      0.1, 3, 1, step = 0.1)
+          sliderInput("custom_n_years",  "Years for slope calculation", 2, 10, 5,   step = 1),
+          sliderInput("custom_lambda",   "Sensitivity (lambda)",        0.1, 3, 1,  step = 0.1)
         )
-        ),
-        hr(),
+      ),
+      hr(),
 
       # --- Simulation settings ---
       div(class = "sidebar-section",
@@ -373,7 +400,7 @@ ui <- fluidPage(
           br(),
 
           # --- Top: three effort reference values ---
-            h4("Step 1 — Review reference effort levels"),
+          h4("Step 1 — Review reference effort levels"),
           p(style = "color:#555; font-size:13px;",
             "Upload your species CSV and set E_init in the sidebar.
      The table below shows three reference effort levels to help
@@ -492,7 +519,7 @@ ui <- fluidPage(
 # ==============================================================
 server <- function(input, output, session) {
 
-   # ---- 1. Load CSV ----
+  # ---- 1. Load CSV ----
   param_data <- reactive({
     req(input$param_file)
     tryCatch(
@@ -564,110 +591,159 @@ server <- function(input, output, session) {
   })
 
 
-    # ---- 4
-    # Generic runtime token resolver.
-    # Replaces string tokens in mp$params with actual runtime values.
-    # To add a new token: define it in the preset as ".token_name"
-    # and add it to the token_map here. Nothing else needs to change.
-    resolve_mp_params <- function(mp, runtime) {
-      token_map <- list(
-        .E_mmsy              = runtime$E_mmsy,
-        .E_init              = runtime$E_init,
-        .closure_months_prop = runtime$closure_months / 12,
-        .prop_closed_csv     = runtime$prop_closed_csv
+  # ---- 4
+  # Generic runtime token resolver.
+  # Replaces string tokens in mp$params with actual runtime values.
+  # To add a new token: define it in the preset as ".token_name"
+  # and add it to the token_map here. Nothing else needs to change.
+  resolve_mp_params <- function(mp, runtime) {
+    token_map <- list(
+      .E_mmsy              = runtime$E_mmsy,
+      .E_mmsy_08           = runtime$E_mmsy * 0.8,
+      .E_mmsy_06           = runtime$E_mmsy * 0.6,
+      .E_init              = runtime$E_init,
+      .closure_months_prop = runtime$closure_months / 12,
+      .prop_closed_csv     = runtime$prop_closed_csv
+    )
+    mp$params <- lapply(mp$params, function(v) {
+      if (is.character(v) && v %in% names(token_map)) token_map[[v]] else v
+    })
+    mp
+  }
+
+
+  # ---- 5. Get selected MP spec ----
+  # Injects E_mmsy into params that need it (E_base, Emax).
+  # Also reads the closure sliders and converts to proportions.
+  #  gets the chosen MP and injects E_mmsy into parameters that need it:
+  # Closure MPs: sets E_base = E_mmsy and reads input$closure_months to set prop_season or prop_closed
+  # Hockey-stick MPs: sets Emax = E_mmsy
+  # This is necessary because mp_presets.R stores NULL for these fields as a placeholder
+
+  selected_mp_r <- reactive({
+    req(input$mp_id)
+    id   <- input$mp_id
+    mmsy <- mmsy_r(); req(mmsy)
+    df   <- param_data()
+
+
+    # Handle custom MP built from UI sliders
+    if (id == "MP_custom") {
+      mp <- switch(input$custom_mp_type,
+                   constant_effort = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom constant effort",
+                     hcr_type = "constant_effort",
+                     E        = mmsy$E_mmsy * (input$custom_E_fraction %||% 1)
+                   ),
+                   B_hs_min = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom HS (min species)",
+                     hcr_type = "B_hs_min",
+                     d_lim    = input$custom_d_lim   %||% 0.2,
+                     d_trig   = input$custom_d_trig  %||% 0.4,
+                     Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                     Emin     = 0
+                   ),
+                   B_hs_mean = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom HS (mean species)",
+                     hcr_type = "B_hs_mean",
+                     d_lim    = input$custom_d_lim   %||% 0.2,
+                     d_trig   = input$custom_d_trig  %||% 0.4,
+                     Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                     Emin     = 0
+                   ),
+                   B_hs_low_r = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom HS (n least resilient)",
+                     hcr_type = "B_hs_low_r",
+                     d_lim    = input$custom_d_lim   %||% 0.2,
+                     d_trig   = input$custom_d_trig  %||% 0.4,
+                     Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                     Emin     = 0,
+                     n_low    = input$custom_n_low   %||% 2
+                   ),
+                   index_hs_min = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom index HS (min species)",
+                     hcr_type = "index_hs_min",
+                     d_lim    = input$custom_d_lim   %||% 0.2,
+                     d_trig   = input$custom_d_trig  %||% 0.4,
+                     Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                     Emin     = 0
+                   ),
+                   index_hs_mean = mp_custom(
+                     mp_id    = "MP_custom",
+                     name     = "Custom index HS (mean species)",
+                     hcr_type = "index_hs_mean",
+                     d_lim    = input$custom_d_lim   %||% 0.2,
+                     d_trig   = input$custom_d_trig  %||% 0.4,
+                     Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
+                     Emin     = 0
+                   ),
+                   two_over_three = mp_custom(
+                     mp_id      = "MP_custom",
+                     name       = "Custom 2-over-3",
+                     hcr_type   = "two_over_three",
+                     agg_type   = input$custom_agg_type_2o3   %||% "min",
+                     max_change = input$custom_max_change %||% 0.2
+                   ),
+                   slope_rule = mp_custom(
+                     mp_id      = "MP_custom",
+                     name       = "Custom slope rule",
+                     hcr_type   = "slope_rule",
+                     agg_type   = input$custom_agg_type_slope  %||% "min",
+                     n_years    = input$custom_n_years         %||% 5,
+                     lambda     = input$custom_lambda          %||% 1,
+                     max_change = input$custom_max_change_slope %||% 0.2
+                   )
       )
-      mp$params <- lapply(mp$params, function(v) {
-        if (is.character(v) && v %in% names(token_map)) token_map[[v]] else v
-      })
-      mp
+      return(mp)
     }
 
 
-    # ---- 5. Get selected MP spec ----
-    # Injects E_mmsy into params that need it (E_base, Emax).
-    # Also reads the closure sliders and converts to proportions.
-    #  gets the chosen MP and injects E_mmsy into parameters that need it:
-    # Closure MPs: sets E_base = E_mmsy and reads input$closure_months to set prop_season or prop_closed
-    # Hockey-stick MPs: sets Emax = E_mmsy
-    # This is necessary because mp_presets.R stores NULL for these fields as a placeholder
+    runtime <- list(
+      E_mmsy          = mmsy$E_mmsy,
+      E_init          = E_init_r(),
+      closure_months  = input$closure_months %||% 3,
+      prop_closed_csv = if (!is.null(df) && !any(is.na(df$prop_B_area)))
+        df$prop_B_area else NULL
+    )
 
-    selected_mp_r <- reactive({
-      req(input$mp_id)
-      id   <- input$mp_id
-      mmsy <- mmsy_r(); req(mmsy)
-      df   <- param_data()
-
-
-      # Handle custom MP built from UI sliders
-      if (id == "MP_custom") {
-        mp <- switch(input$custom_mp_type,
-                     constant_effort = mp_custom(
-                       mp_id    = "MP_custom",
-                       name     = "Custom constant effort",
-                       hcr_type = "constant_effort",
-                       E        = mmsy$E_mmsy * (input$custom_E_fraction %||% 1)
-                     ),
-                     B_hs_min = mp_custom(
-                       mp_id    = "MP_custom",
-                       name     = "Custom hockey-stick",
-                       hcr_type = "B_hs_min",
-                       d_lim    = input$custom_d_lim  %||% 0.2,
-                       d_trig   = input$custom_d_trig %||% 0.4,
-                       Emax     = mmsy$E_mmsy * (input$custom_Emax_frac %||% 1),
-                       Emin     = 0
-                     ),
-                     two_over_three = mp_custom(
-                       mp_id      = "MP_custom",
-                       name       = "Custom 2-over-3",
-                       hcr_type   = "two_over_three",
-                       agg_type   = "min",
-                       max_change = input$custom_max_change %||% 0.2
-                     )
-        )
-        return(mp)
-      }
+    mp_found <- Filter(function(m) m$mp_id == id, fixed_mp_list)
+    if (length(mp_found) == 0) stop("Unknown MP id: ", id)
+    resolve_mp_params(mp_found[[1]], runtime)
+  })
 
 
-      runtime <- list(
-        E_mmsy          = mmsy$E_mmsy,
-        E_init          = E_init_r(),
-        closure_months  = input$closure_months %||% 3,
-        prop_closed_csv = if (!is.null(df) && !any(is.na(df$prop_B_area)))
-          df$prop_B_area else NULL
+  # ---- 6. Get selected OM spec ----
+  # simply looks up the chosen OM id in om_spec_map and returns the om_spec object.
+  selected_om_r <- reactive({
+    req(input$om_id)
+    if (input$om_id == "om_custom_ui") {
+      om_custom(
+        r_cv     = input$cv_r,
+        K_cv     = input$cv_K,
+        proc_cv  = input$proc_cv,
+        obs_cv   = input$obs_cv,
+        proc_rho = input$proc_rho,
+        assess_cv = input$assess_cv %||% 0,
+        label    = "Custom OM"
       )
-
-      mp_found <- Filter(function(m) m$mp_id == id, fixed_mp_list)
-      if (length(mp_found) == 0) stop("Unknown MP id: ", id)
-      resolve_mp_params(mp_found[[1]], runtime)
-    })
-
-
-    # ---- 6. Get selected OM spec ----
-    # simply looks up the chosen OM id in om_spec_map and returns the om_spec object.
-    selected_om_r <- reactive({
-      req(input$om_id)
-      if (input$om_id == "om_custom_ui") {
-        om_custom(
-          r_cv     = input$cv_r,
-          K_cv     = input$cv_K,
-          proc_cv  = input$proc_cv,
-          obs_cv   = input$obs_cv,
-          proc_rho = input$proc_rho,
-          label    = "Custom OM"
-        )
-      } else {
-        om_spec_map[[input$om_id]]
-      }
-    })
+    } else {
+      om_spec_map[[input$om_id]]
+    }
+  })
 
 
-    # ---- Closure labels ----
-    output$closure_prop_label <- renderUI({
-      months <- input$closure_months %||% 3
-      pct    <- round(months / 12 * 100, 1)
-      tags$p(style = "color:#555; font-size:12px; margin-top:-8px;",
-             sprintf("= %.1f%% effort reduction", pct))
-    })
+  # ---- Closure labels ----
+  output$closure_prop_label <- renderUI({
+    months <- input$closure_months %||% 3
+    pct    <- round(months / 12 * 100, 1)
+    tags$p(style = "color:#555; font-size:12px; margin-top:-8px;",
+           sprintf("= %.1f%% effort reduction", pct))
+  })
 
 
 
@@ -813,7 +889,7 @@ server <- function(input, output, session) {
         labs(x = "Depletion signal (B/K)", y = "Effort",
              title = paste("HCR:", mp$name)) +
         ylim(0, max(E_val * 1.2, 0.1))
-    } else if (type %in% c("B_hs_min","B_hs_mean","index_hs_min","B_hs_low_r")) {
+    } else if (type %in% c("B_hs_min","B_hs_mean","index_hs_min","index_hs_mean","B_hs_low_r")) {
       dlim <- p$d_lim %||% 0.2; dtrg <- p$d_trig %||% 0.4
       Emax <- p$Emax  %||% 1;   Emin <- p$Emin   %||% 0
       E_vals <- sapply(d_seq, hcr_hockeystick,
