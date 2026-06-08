@@ -117,7 +117,7 @@ simulate_multispp <- function(
     process_cv <- om_spec$proc_cv
     rho_proc   <- om_spec$proc_rho
     obs_cv     <- om_spec$obs_cv
-    assess_cv  <- 0   # om_spec controls all uncertainty; no extra assess noise
+    assess_cv  <- om_spec$assess_cv %||% 0
   } else if (!is.null(om_id)) {
     # Legacy: look up om_id in a data.frame of presets
     if (is.null(om_presets))

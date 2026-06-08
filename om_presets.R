@@ -36,6 +36,7 @@ om_custom <- function(
   catch_cv    = 0.00,
   # Structural assumptions
   beta_hyper  = 0.00,
+  assess_cv = 0.00,
   # Label
   label       = "Custom OM"
 ) {
@@ -62,10 +63,20 @@ om_custom <- function(
       obs_cv      = obs_cv,
       catch_cv    = catch_cv,
       beta_hyper  = beta_hyper,
-      label       = label
+     assess_cv = assess_cv,
+     label       = label
     ),
     class = "om_spec"
   )
+}
+
+om_custom <- function(r_cv = 0, K_cv = 0, q_cv = 0, qI_cv = 0,
+                      proc_cv = 0, proc_rho = 0, obs_cv = 0,
+                      assess_cv = 0, label = "Custom") {
+  structure(list(r_cv = r_cv, K_cv = K_cv, q_cv = q_cv,
+                 qI_cv = qI_cv, proc_cv = proc_cv, proc_rho = proc_rho,
+                 obs_cv = obs_cv, assess_cv = assess_cv, label = label),
+            class = "om_spec")
 }
 
 #' Print method for om_spec

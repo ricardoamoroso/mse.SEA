@@ -274,7 +274,9 @@ ui <- fluidPage(
         sliderInput("cv_K",     "CV on K (carrying capacity)", 0, 0.5, 0,   step = 0.05),
         sliderInput("proc_cv",  "Process error CV",            0, 0.5, 0.2, step = 0.05),
         sliderInput("obs_cv",   "Observation error CV",        0, 0.5, 0.2, step = 0.05),
-        sliderInput("proc_rho", "Autocorrelation (process)",   0, 0.9, 0,   step = 0.1)
+        sliderInput("proc_rho", "Autocorrelation (process)",   0, 0.9, 0,   step = 0.1),
+        sliderInput("assess_cv", "Assessment error CV (depletion signal for HS rules)",
+                    0, 0.5, 0.1, step = 0.05)
       ),
       hr(),
 
