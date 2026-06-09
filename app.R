@@ -406,6 +406,7 @@ ui <- fluidPage(
      The table below shows three reference effort levels to help
      you decide what historical effort to use."),
           DTOutput("effort_ref_table"),
+          uiOutput("mmsy_catch_ui"),
           br(),
 
           # --- Middle: consistency diagnostics ---
@@ -582,6 +583,8 @@ server <- function(input, output, session) {
 
     tags$p(style = "color:#555; font-size:11px; margin-top:4px;",
            sprintf("E_mmsy = %.5f", E_mmsy_val),
+           br(),
+           sprintf("C_mmsy = %.2f (total)", mmsy$Y_total(E_mmsy_val)),
            br(),
            if (!is.na(E_impl_val))
              sprintf("E_implied = %.5f", E_impl_val)
@@ -829,6 +832,26 @@ server <- function(input, output, session) {
               options = list(dom = "t", ordering = FALSE)) |>
       formatRound("Value", digits = 6)
   })
+
+  output$mmsy_catch_ui <- renderUI({
+    mmsy <- mmsy_r(); req(mmsy)
+    df   <- param_data(); req(df)
+    C_vec   <- mmsy$Y_components(mmsy$E_mmsy)
+    C_total <- sum(C_vec)
+    rows <- mapply(function(sp, c_val) {
+      tags$tr(tags$td(sp), tags$td(sprintf("%.2f", c_val)))
+    }, df$species_name, C_vec, SIMPLIFY = FALSE)
+    tags$div(
+      style = "margin-top:6px; font-size:12px; color:#555;",
+      tags$b(sprintf("Catch at E_mmsy (MMSY total = %.2f):", C_total)),
+      tags$table(style = "margin-top:4px;",
+                 tags$thead(tags$tr(tags$th("Species"), tags$th("Catch at E_mmsy"))),
+                 tags$tbody(rows)
+      )
+    )
+  })
+
+
 
   output$conditioning_table <- renderDT({
     diag <- diag_r(); req(diag)
