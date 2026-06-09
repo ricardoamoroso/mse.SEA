@@ -1156,6 +1156,11 @@ server <- function(input, output, session) {
 
   plot_tradeoff_base <- function(df, y_col, y_lo, y_hi, y_lab) {
     if (nrow(df) == 0) return(ggplot() + theme_void() + ggtitle("No runs yet — press Run"))
+    n_labels <- length(unique(df$run_label))
+    n_cols   <- min(4, n_labels)
+    n_rows   <- ceiling(n_labels / n_cols)
+
+
     ggplot(df, aes(x = med_mean_catch, y = .data[[y_col]],
                    colour = run_label, shape = OM, label = run_label)) +
       geom_errorbar( aes(ymin = .data[[y_lo]], ymax = .data[[y_hi]]),
@@ -1165,7 +1170,11 @@ server <- function(input, output, session) {
       geom_point(size = 4) +
       tradeoff_theme() +
       scale_y_continuous(limits = c(0, 1)) +
-      labs(x = "Median mean catch (last 10 yr)", y = y_lab)
+      labs(x = "Median mean catch (last 10 yr)", y = y_lab)+
+      guides(
+      colour = guide_legend(title = "run_label", nrow = n_rows, byrow = TRUE),
+      shape  = guide_legend(title = "OM",        nrow = 2,      byrow = TRUE)
+    )
   }
 
   plot_tradeoff1_fun <- function(df)
