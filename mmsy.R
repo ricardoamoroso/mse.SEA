@@ -2,39 +2,43 @@
 # mmsy.R — Multispecies Maximum Sustainable Yield under shared effort
 # =================================================================
 
-#' Compute analytic MMSY under a shared effort fleet
+#' Compute MMSY under a shared effort fleet
 #'
 #' Given Schaefer dynamics and a single shared effort E across species:
-#'   Equilibrium B_i*(E) = K_i * (1 - q_i * E / r_i)
-#'   Yield_i(E) = q_i * E * B_i*
-#'   E_mmsy = (sum K_i q_i) / (2 * sum K_i q_i^2 / r_i)
+#'   Equilibrium B_i*(E) = K_i * (1 - q_i * E / r_i), floored at 0
+#'   Yield_i(E) = q_i * E * max(0, B_i*)
+#'
+#' E_mmsy is found numerically over [0, min(r/q)] — the interval where the
+#' total yield curve is unimodal. The analytic closed-form formula
+#' (sum(K*q) / (2*sum(K*q^2/r))) is incorrect when some species collapse
+#' before the complex optimum, because negative biomasses cancel positive
+#' yields from other species, pulling E_mmsy artificially low.
 #'
 #' @param r  Vector of intrinsic growth rates
 #' @param K  Vector of carrying capacities
 #' @param q  Vector of catchability coefficients
-#' @param enforce_Emax Logical; cap E_mmsy at min(r/q) to avoid negative biomass
+#' @param enforce_Emax Logical; kept for backwards compatibility, no longer used
 #' @return Named list with E_mmsy, yield functions, and reference biomasses
 #' @export
 mmsy_shared_effort <- function(r, K, q, enforce_Emax = TRUE) {
-  num    <- sum(K * q)
-  den    <- 2 * sum(K * q^2 / r)
-  E_star <- if (den > 0) num / den else 0
 
-  if (enforce_Emax) {
-    E_max  <- min(r / q)
-    E_star <- min(E_star, E_max)
+  # Total yield at effort E, with collapsed species (B < 0) contributing zero
+  Y_tmp <- function(E) {
+    Beq_i <- pmax(0, K * (1 - q * E / r))
+    sum(q * E * Beq_i)
   }
+
+  # Find E_mmsy numerically; [0, min(r/q)] is unimodal so optimise() is reliable
+  E_star <- optimise(Y_tmp, interval = c(0, max(r / q)), maximum = TRUE)$maximum
+  cat("E_mmsy:", mmsy$E_mmsy, "\n")
 
   Y_components <- function(E) {
-    mat <- outer(E, K * q, `*`) - outer(E^2, K * (q^2) / r, `*`)
-    mat[mat < 0] <- 0
-    if (length(E) == 1) drop(mat) else mat
+    Beq_i <- pmax(0, K * (1 - q * E / r))
+    q * E * Beq_i
   }
 
-  Y_total <- function(E) {
-    Y <- Y_components(E)
-    if (is.matrix(Y)) rowSums(Y) else sum(Y)
-  }
+  Y_total <- function(E) sum(Y_components(E))
+
 
   Bmsy_multi_vec        <- K * (1 - q * E_star / r)
   Bmsy_multi_vec[Bmsy_multi_vec < 0] <- 0

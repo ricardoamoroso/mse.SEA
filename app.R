@@ -272,6 +272,7 @@ ui <- fluidPage(
         condition = "input.om_id == 'om_custom_ui'",
         sliderInput("cv_r",     "CV on r (growth rate)",      0, 0.5, 0,    step = 0.05),
         sliderInput("cv_K",     "CV on K (carrying capacity)", 0, 0.5, 0,   step = 0.05),
+        sliderInput("cv_q",     "CV on q (catchability)",      0, 0.5, 0,   step = 0.05),
         sliderInput("proc_cv",  "Process error CV",            0, 0.5, 0.2, step = 0.05),
         sliderInput("obs_cv",   "Observation error CV",        0, 0.5, 0.2, step = 0.05),
         sliderInput("proc_rho", "Autocorrelation (process)",   0, 0.9, 0,   step = 0.1),
@@ -728,6 +729,7 @@ server <- function(input, output, session) {
       om_custom(
         r_cv     = input$cv_r,
         K_cv     = input$cv_K,
+        q_cv     = input$cv_q,
         proc_cv  = input$proc_cv,
         obs_cv   = input$obs_cv,
         proc_rho = input$proc_rho,
@@ -1195,9 +1197,9 @@ server <- function(input, output, session) {
       scale_y_continuous(limits = c(0, 1)) +
       labs(x = "Median mean catch (last 10 yr)", y = y_lab)+
       guides(
-      colour = guide_legend(title = "run_label", nrow = n_rows, byrow = TRUE),
-      shape  = guide_legend(title = "OM",        nrow = 2,      byrow = TRUE)
-    )
+        colour = guide_legend(title = "run_label", nrow = n_rows, byrow = TRUE),
+        shape  = guide_legend(title = "OM",        nrow = 2,      byrow = TRUE)
+      )
   }
 
   plot_tradeoff1_fun <- function(df)
