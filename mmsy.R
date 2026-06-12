@@ -30,7 +30,6 @@ mmsy_shared_effort <- function(r, K, q, enforce_Emax = TRUE) {
 
   # Find E_mmsy numerically; [0, min(r/q)] is unimodal so optimise() is reliable
   E_star <- optimise(Y_tmp, interval = c(0, max(r / q)), maximum = TRUE)$maximum
-  cat("E_mmsy:", mmsy$E_mmsy, "\n")
 
   Y_components <- function(E) {
     Beq_i <- pmax(0, K * (1 - q * E / r))
